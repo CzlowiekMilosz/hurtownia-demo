@@ -1,0 +1,9 @@
+node_modules
+dist
+*.local
+.DS_Store
+
+# Dokumentacja tylko lokalnie (nie publikujemy)
+README.md
+ROADMAP.md
+PLAN_MVP_hurtownia.md

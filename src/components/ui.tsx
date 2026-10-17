@@ -1,5 +1,6 @@
 import { useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { brand } from "../config/brand";
+import { MAX_QTY } from "../lib/store";
 import type { InvoiceStatus, OrderStatus } from "../types";
 
 /** Logo z brand.ts; jeśli pliku nie ma – zastępczy znak z liściem. */
@@ -154,7 +155,7 @@ export function QtyStepper({
   const shown = draft ?? (value ? String(value).replace(".", ",") : "");
   const commit = (raw: string) => {
     const n = Number(raw.replace(",", "."));
-    onChange(Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : 0);
+    onChange(Number.isFinite(n) && n > 0 ? Math.min(MAX_QTY, Math.round(n * 100) / 100) : 0);
     setDraft(null);
   };
   return (
@@ -175,6 +176,7 @@ export function QtyStepper({
         placeholder="0"
         disabled={disabled}
         aria-label={`Ilość: ${label}`}
+        maxLength={7}
         onChange={(e) => setDraft(e.target.value.replace(/[^\d.,]/g, ""))}
         onBlur={(e) => commit(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
@@ -182,8 +184,8 @@ export function QtyStepper({
       <button
         type="button"
         className="grid h-11 w-11 place-items-center rounded-r-xl text-xl font-bold text-brand hover:bg-brand-50 disabled:cursor-not-allowed"
-        onClick={() => onChange(Math.round((value + step) * 100) / 100)}
-        disabled={disabled}
+        onClick={() => onChange(Math.min(MAX_QTY, Math.round((value + step) * 100) / 100))}
+        disabled={disabled || value >= MAX_QTY}
         aria-label={`Zwiększ: ${label}`}
       >
         +

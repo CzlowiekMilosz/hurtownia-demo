@@ -32,12 +32,37 @@ function loadSession(): Session {
 
 // ───────────────────────── stan + trwałość ─────────────────────────
 
+/** Rozsądne limity – chronią przed literówkami typu 99999 kg. */
+export const MAX_QTY = 9999;
+export const MAX_PRICE = 99999;
+const clampQty = (n: number) => round2(Math.min(MAX_QTY, Math.max(0, Number.isFinite(n) ? n : 0)));
+
+/** Podstawowe sprawdzenie kształtu danych z localStorage (mogły zostać ręcznie zmienione lub uszkodzone). */
+function isValidState(x: unknown): x is AppState {
+  if (!x || typeof x !== "object") return false;
+  const s = x as Partial<AppState>;
+  return (
+    s.version === STATE_VERSION &&
+    Array.isArray(s.products) &&
+    Array.isArray(s.clients) &&
+    Array.isArray(s.orders) &&
+    Array.isArray(s.invoices) &&
+    !!s.carts &&
+    typeof s.carts === "object" &&
+    !!s.counters &&
+    typeof s.counters.order === "number" &&
+    typeof s.counters.invoice === "number" &&
+    s.orders.every((o) => o && typeof o.id === "string" && Array.isArray(o.items)) &&
+    s.invoices.every((i) => i && typeof i.id === "string" && Array.isArray(i.lines))
+  );
+}
+
 function load(): AppState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      const parsed = JSON.parse(raw) as AppState;
-      if (parsed?.version === STATE_VERSION) return { ...parsed, session: loadSession() };
+      const parsed: unknown = JSON.parse(raw);
+      if (isValidState(parsed)) return { ...parsed, session: loadSession() };
     }
   } catch {
     // brak dostępu do localStorage lub uszkodzone dane – start od danych przykładowych
@@ -136,7 +161,7 @@ export function logout() {
 export function setCartQty(clientId: string, productId: string, qty: number) {
   update((s) => {
     const cart = (s.carts[clientId] ??= {});
-    const q = round2(Math.max(0, qty));
+    const q = clampQty(qty);
     if (q > 0) cart[productId] = q;
     else delete cart[productId];
   });
@@ -198,7 +223,7 @@ export function placeOrder(clientId: string, input: { deliveryDate: string; note
     clientId,
     createdAt: new Date().toISOString(),
     deliveryDate: input.deliveryDate,
-    notes: input.notes?.trim() || undefined,
+    notes: input.notes?.trim().slice(0, 500) || undefined,
     status: "nowe",
     items,
   };
@@ -253,7 +278,7 @@ export function updateOrderQuantities(orderId: string, quantities: Record<string
     const o = s.orders.find((x) => x.id === orderId);
     if (!o || o.status === "skompletowane" || o.status === "odrzucone") return;
     o.items = o.items
-      .map((it) => ({ ...it, orderedQty: round2(quantities[it.productId] ?? it.orderedQty) }))
+      .map((it) => ({ ...it, orderedQty: clampQty(quantities[it.productId] ?? it.orderedQty) }))
       .filter((it) => it.orderedQty > 0);
     syncInvoice(s, o);
   });
@@ -274,7 +299,7 @@ export function completeOrder(orderId: string, lines: FulfillmentInput[]) {
     for (const item of o.items) {
       const f = lines.find((l) => l.productId === item.productId);
       if (!f) continue;
-      item.actualQty = round2(Math.max(0, f.actualQty));
+      item.actualQty = clampQty(f.actualQty);
       const sub =
         f.substituteProductId && f.substituteProductId !== item.productId
           ? s.products.find((p) => p.id === f.substituteProductId)
@@ -293,7 +318,12 @@ export function updateInvoiceLines(invoiceId: string, lines: InvoiceLine[]) {
   update((s) => {
     const inv = s.invoices.find((i) => i.id === invoiceId);
     if (!inv || inv.status === "wysłana (demo)") return;
-    inv.lines = lines.map((l) => ({ ...l, qty: round2(l.qty), netPrice: round2(l.netPrice) }));
+    inv.lines = lines.map((l) => ({
+      ...l,
+      name: l.name.slice(0, 200),
+      qty: clampQty(l.qty),
+      netPrice: round2(Math.min(MAX_PRICE, Math.max(0, l.netPrice))),
+    }));
     inv.status = "szkic";
   });
 }
@@ -360,7 +390,11 @@ export function sendInvoicesToKsefDemo(invoiceIds: string[]): KsefSendResult[] {
 export function updateClient(clientId: string, patch: Partial<Omit<Client, "id">>) {
   update((s) => {
     const c = s.clients.find((x) => x.id === clientId);
-    if (c) Object.assign(c, patch);
+    if (!c) return;
+    Object.assign(c, patch);
+    c.name = c.name.slice(0, 120);
+    c.address = c.address.slice(0, 200);
+    c.nip = c.nip.slice(0, 20);
   });
 }
 
@@ -371,7 +405,7 @@ export function setClientPriceOverride(clientId: string, productId: string, pric
     if (!c) return;
     const overrides = { ...(c.pricing.overrides ?? {}) };
     if (price === null || !(price > 0)) delete overrides[productId];
-    else overrides[productId] = round2(price);
+    else overrides[productId] = round2(Math.min(MAX_PRICE, price));
     c.pricing.overrides = overrides;
   });
 }
@@ -379,6 +413,8 @@ export function setClientPriceOverride(clientId: string, productId: string, pric
 export function updateProduct(productId: string, patch: Partial<Omit<Product, "id">>) {
   update((s) => {
     const p = s.products.find((x) => x.id === productId);
-    if (p) Object.assign(p, patch);
+    if (!p) return;
+    Object.assign(p, patch);
+    p.basePrice = round2(Math.min(MAX_PRICE, Math.max(0.01, p.basePrice)));
   });
 }

@@ -103,6 +103,7 @@ export default function Summary() {
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
+            maxLength={500}
             placeholder="np. dostawa przed 7:00, pomidory bardziej dojrzałe"
             className="w-full rounded-xl bg-white px-3 py-2.5 text-base ring-1 ring-stone-300 outline-none focus:ring-2 focus:ring-brand"
           />
